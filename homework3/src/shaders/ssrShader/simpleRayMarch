@@ -1,0 +1,47 @@
+
+float RayMarch2(vec3 ori, vec3 dir, out vec3 hitPos) {
+  hitPos = vec3(0.0);
+
+  float maxDistance = 1000.0;
+  float resolution  = 0.3;
+  int   steps       = 5;
+  float thickness   = 2.0;
+  
+  vec2 texSize  = uReslution.xy;//2000*1000
+
+  vec3 end = ori + dir*maxDistance;
+
+  vec3 nextPos = ori;
+
+  vec3  increment = dir*0.1;
+  
+  float search0 = 0.0;
+  float search1 = 0.0;
+
+  int hit0 = 0;
+  int hit1 = 0;
+
+  float depth        = thickness;
+  float gbuffDepth = thickness;
+  float posDepth = thickness;
+
+   for (int i  = 0; i < 100; ++i) {
+
+     nextPos += increment;
+      vec2 uv = GetScreenCoordinate(nextPos.xyz);
+
+    gbuffDepth = GetGBufferDepth(uv);
+    posDepth = GetDepth(nextPos.xyz);
+    depth = posDepth - gbuffDepth;
+
+    if (depth > 1e-2 && depth < thickness) {
+      hit0 = 1;
+      break;
+    } else {
+      search0 = search1;
+    }
+   }
+  hitPos = nextPos;
+  return float(hit0);
+  
+}
