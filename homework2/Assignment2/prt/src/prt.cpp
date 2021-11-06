@@ -64,6 +64,12 @@ namespace ProjEnv
         Eigen::Array3f coeff;
     };
 
+    struct InterRef {
+        Point3f p;
+        Normal3f n;
+        int vertexIndex;
+    };
+
     float CalcPreArea(const float &x, const float &y)
     {
         return std::atan2(x * y, std::sqrt(x * x + y * y + 1.0));
@@ -103,6 +109,7 @@ namespace ProjEnv
         double PI = 3.1415926;
 
         std::vector<Eigen::Vector3f> cubemapDirs;
+       
         cubemapDirs.reserve(6 * width * height);
         for (int i = 0; i < 6; i++)
         {
@@ -203,10 +210,11 @@ public:
 
 
 
-    void interreflectionFunc(int vertexIndex,const Scene* scene, const Point3f& v, const Normal3f& n, int bounces,int sample_count,int order) {
+    void  interreflectionFunc(int vertexIndex,const Scene* scene, const Point3f& v, const Normal3f& n, int bounces,int sample_count,int order,std::vector<Eigen::MatrixXf> &sh_buffer, std::vector<ProjEnv::InterRef>&  hit) {
 
         const auto mesh = scene->getMeshes()[0];
         const MatrixXf& normals = mesh->getVertexNormals();
+
 
         // This is the approach demonstrated in [1] and is useful for arbitrary
         // functions on the sphere that are represented analytically.
@@ -218,6 +226,7 @@ public:
         std::random_device rd;
         std::mt19937 gen(rd());
         std::uniform_real_distribution<> rng(0.0, 1.0);
+
         for (int t = 0; t < sample_side; t++) {
             for (int p = 0; p < sample_side; p++) {
                 double alpha = (t + rng(gen)) / sample_side;
@@ -240,24 +249,30 @@ public:
                     Intersection its;
                     bool cross = scene->rayIntersect(ray, its);
                     if (cross) {
-                        const Eigen::Matrix<Vector3f::Scalar, SHCoeffLength, 1> sh0 = m_TransportSHCoeffs.col(its.tri_index.x()),
-                            sh1 = m_TransportSHCoeffs.col(its.tri_index.y()),
-                            sh2 = m_TransportSHCoeffs.col(its.tri_index.z());
+                        const Eigen::Matrix<Vector3f::Scalar, SHCoeffLength, 1> sh0 = sh_buffer[bounces-1].col(its.tri_index.x()),
+                            sh1 = sh_buffer[bounces - 1].col(its.tri_index.y()),
+                            sh2 = sh_buffer[bounces - 1].col(its.tri_index.z());
                         const Vector3f& bary = its.bary;
                         const Eigen::Matrix<Vector3f::Scalar, SHCoeffLength, 1> barySH = bary.x() * sh0 + bary.y() * sh1 + bary.z() * sh2;
                         for (int j = 0; j < SHCoeffLength; j++)
                         {
-                            double weight = 4.0 * M_PI / (sample_side * sample_side);
-                            //m_TransportSHCoeffs.col(vertexIndex).coeffRef(j) += barySH.coeffRef(j) * weight* md;
                             (*coeffs)[j] += barySH.coeffRef(j)* md;;
                         }
-                        if (bounces > 0) {
+
+                        if (bounces < m_Bounce) {
                             const Point3f& p = its.p;
                             const Normal3f& n1 = normals.col(its.tri_index.x()),
                                 n2 = normals.col(its.tri_index.y()),
                                 n3 = normals.col(its.tri_index.z());
-                            const Normal3f& normal = (bary.x() * n1 + bary.y() * n2 + bary.z() * n3).normalized();
-                            interreflectionFunc(vertexIndex, scene, p, normal, bounces - 1, sample_count, order);
+                            const Normal3f& normal = (bary.x() * n1 + bary.y() * n2 + bary.z() * n3).normalized();                           
+                            //interreflectionFunc(vertexIndex, scene, p, normal, bounces - 1, sample_count, order, sh_buffer);
+                            ProjEnv::InterRef interRef;
+                            interRef.p = p;
+                            interRef.n = normal;
+                            interRef.vertexIndex = vertexIndex;
+                            hit.push_back(interRef);
+                            //hit_points.push_back(p);
+                            //hit_normals.push_back(normal);
                         }
                     }
                 }
@@ -268,8 +283,8 @@ public:
         // 4pi/sample_side^2. 4pi for the surface area of a unit sphere, and
         // 1/sample_side^2 for the number of samples drawn uniformly.
         double weight = 4.0 * M_PI / (sample_side * sample_side);
-        for (int i = bounces; i < m_Bounce; i++) {
-            weight *= weight;
+        for (int i = 0; i < bounces; i++) {
+            weight *= (1/ (4.0 * M_PI));
         }
         for (unsigned int i = 0; i < coeffs->size(); i++) {
             (*coeffs)[i] *= weight;
@@ -277,8 +292,14 @@ public:
 
         for (int j = 0; j < SHCoeffLength; j++)
         {
-            m_TransportSHCoeffs.col(vertexIndex).coeffRef(j) += (*coeffs)[j];
-        }      
+            sh_buffer[bounces].col(vertexIndex).coeffRef(j) = (*coeffs)[j];
+        }
+        return ;
+        //if (bounces < m_Bounce) {
+        //    for (int i = 0; i < hit_points.size(); i++) {
+        //        interreflectionFunc(vertexIndex, scene, hit_points[i], hit_normals[i], bounces + 1, sample_count, order, sh_buffer);
+        //    }
+        //}
     };
 
     // Get the total number of coefficients for a function represented by
@@ -315,7 +336,7 @@ public:
         fout << mesh->getVertexCount() << std::endl;
         const double PI = 3.1415926;
 
-
+        
         for (int i = 0; i < mesh->getVertexCount(); i++)
         {
             const Point3f &v = mesh->getVertexPositions().col(i);
@@ -370,17 +391,47 @@ public:
                 m_TransportSHCoeffs.col(i).coeffRef(j) = (*shCoeff)[j];
             }
         }
+        
         if (m_Type == Type::Interreflection)
         {
             // TODO: leave for bonus
-            
+            std::vector<Eigen::MatrixXf> sh_buffer;
+            sh_buffer.reserve(m_Bounce + 1);
+            sh_buffer.push_back(m_TransportSHCoeffs);
+            for (int i = 1; i < m_Bounce + 1; i++)
+            {
+                Eigen::MatrixXf newMatrixXf;
+                newMatrixXf.resize(SHCoeffLength, mesh->getVertexCount());
+                sh_buffer.push_back(newMatrixXf);
+            }
+
+            std::vector<ProjEnv::InterRef> hits;
             for (int i = 0; i < mesh->getVertexCount(); i++)
             {                
-
                 const Point3f& v = mesh->getVertexPositions().col(i);
                 const Normal3f& n = mesh->getVertexNormals().col(i);
-                interreflectionFunc(i,scene,v,n, m_Bounce - 1, m_SampleCount, SHOrder);
 
+                interreflectionFunc(i,scene,v,n, 1, m_SampleCount, SHOrder, sh_buffer, hits);
+            }
+            for (int  b = 2; b <= m_Bounce; b++)
+            {
+                std::vector<ProjEnv::InterRef> newhits;
+                for (int ref = 0; ref < hits.size(); ref++) {
+                    interreflectionFunc(hits[ref].vertexIndex, scene, hits[ref].p, hits[ref].n, b, m_SampleCount, SHOrder, sh_buffer, newhits);
+                }
+                hits = newhits;
+            }
+
+            
+            for (int i = 0; i < mesh->getVertexCount(); i++)
+            {
+                for (int b = 1; b < m_Bounce + 1; b++)
+                {
+                    for (int j = 0; j < sh_buffer[b].col(i).size(); j++)
+                    {
+                        m_TransportSHCoeffs.col(i).coeffRef(j) += sh_buffer[b].col(i).coeffRef(j);
+                    }                     
+                }
             }
             
         }
