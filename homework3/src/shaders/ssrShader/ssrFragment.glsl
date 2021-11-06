@@ -207,8 +207,8 @@ vec3 EvalDiffuse(vec3 wi, vec3 wo, vec2 uv) {
   vec3 diffuse =  GetGBufferDiffuse(uv);
 
   //vec3 L =  diffuse * max(0.0,dot(N,wo));
-  // vec3 L = diffuse * max(0.0,dot(N,wo))*1.0*INV_PI;
-  vec3 L = diffuse *INV_PI;
+  //vec3 L = diffuse * max(0.0,dot(N,wi))*1.0*INV_PI;
+  vec3 L = ( diffuse *INV_PI);
   //vec3 L = vec3(0.0);
   return L;
 }
@@ -393,7 +393,6 @@ float RayMarch(vec3 ori, vec3 dir, out vec3 hitPos) {
   
 }
 
-
 float RayMarch2(vec3 ori, vec3 dir, out vec3 hitPos) {
   hitPos = vec3(0.0);
 
@@ -446,34 +445,16 @@ float RayMarch2(vec3 ori, vec3 dir, out vec3 hitPos) {
 void main() {
 
   vec3 L = vec3(0.0);
-  // L = GetGBufferDiffuse(GetScreenCoordinate(vPosWorld.xyz));
-  // vec3 color = pow(clamp(L, vec3(0.0), vec3(1.0)), vec3(1.0 / 2.2));
-  // gl_FragColor = vec4(vec3(color.rgb), 1.0);
-
   vec2 uv = GetScreenCoordinate(vPosWorld.xyz);
   float s = InitRand(gl_FragCoord.xy);
+
 
   vec3 wo = normalize(uCameraPos.xyz - vPosWorld.xyz );
   vec3 color = Diffuse(uLightDir,wo,uv);
   vec3 shadow = EvalDirectionalLight(uv);
   color *= shadow;
-  // float depth = GetGBufferDepth(uv);
 
   vec3 normal = normalize(GetGBufferNormalWorld(uv));
-  // vec3 dir = normalize(reflect(wo, normal));
-  // float dN2W = dot(wo,normal);
-  // vec3 p0;
-  // float p0hit =0.0;
-  // vec3 p0hitColor;
-  // vec2 p0hitUV;
-  // p0hit = RayMarch(vPosWorld.xyz,-dir,p0);
-  // if(p0hit > 0.0){
-  //   p0hitUV = GetScreenCoordinate(p0);
-  //   p0hitColor = Diffuse(dir,wo,p0hitUV)*2.0;
-  //   // p0hitColor = abs((p0-p00).xyz)/1.0;
-  // }else{
-
-  // }
 
   vec3 b1,b2;
   LocalBasis(normal,b1,b2);
@@ -482,52 +463,44 @@ void main() {
   float pdf = 1.0;
   vec3 LLoop = vec3(0.0);
   float visibility = GetGBufferuShadow(uv) ;
-  if(visibility <= 0.3)
+  if(visibility <= 0.01)
   {
+
       float ignoreCount = 0.0;
       vec3 p1;
       float p1hit =0.0;
       vec2 p1hitUV;
       for(int i=0;i<SAMPLE_NUM;i++){
-          vec3 sampleDir = SampleHemisphereCos(s,pdf);
-          sampleDir = normalize(TBN*sampleDir);
+          vec3 sampleDir = SampleHemisphereUniform(s,pdf);          
+          sampleDir = normalize(sampleDir);
           
+          sampleDir = normalize(TBN*sampleDir);
+          // L += sampleDir;
+          // continue;
           p1hit = RayMarch(vPosWorld.xyz,sampleDir,p1);        
-          if (p1hit > 0.0){
-            // float dis = distance(p1,vPosWorld.xyz);
-            // float factor = max(0.0, 1.0/sqrt(0.7+dis)-0.2);
-
-            p1hitUV = GetScreenCoordinate(p1);
-            LLoop = EvalDiffuse(sampleDir,wo,uv)/pdf;
-            LLoop *= Diffuse(uLightDir,-sampleDir,p1hitUV)*EvalDirectionalLight(p1hitUV)*1.0*1.0 ;
-            L+=LLoop;
-
-            // vec3 disDir = p1 - vPosWorld.xyz;
-
-
-            //1/sqrt(x+0.2)-1
-            // gl_FragColor = vec4((Diffuse(uLightDir,-sampleDir,p1hitUV)*factor), 1.0);
+          if (p1hit > 0.0)
+          {
+              
+              p1hitUV = GetScreenCoordinate(p1);
+              // L += EvalDirectionalLight(p1hitUV);
+              // L += vec3(1.0,0.0,0.0);
+              // continue;
+              LLoop = EvalDiffuse(sampleDir,wo,uv)/pdf;
+              
+              LLoop *= EvalDiffuse(uLightDir,-sampleDir,p1hitUV);
+              // L += LLoop;
+              // continue;
+              LLoop *= EvalDirectionalLight(p1hitUV) *1.0;
+              L+=LLoop;
 
           }else{
-            // ignoreCount++;   
-            // gl_FragColor = vec4(0.0,0.0,0.0,1.0);
+            //L += vec3(0.0,1.0,0.0);
           }
           // return;
       }
-      float counter = float(SAMPLE_NUM-int(ignoreCount));
-      if(counter>0.0){
-        L = max(L/float(counter),vec3(0.0,0.0,0.0));
-      }
+        L = (L/float(SAMPLE_NUM));
+
    }
  
-  //  float visibility = GetGBufferuShadow(uv) ;
-
-  gl_FragColor = vec4(vec3(color.rgb), 1.0);
-  // gl_FragColor = vec4(L+vec3(color.rgb), 1.0);
-  // gl_FragColor = vec4(p0hitColor, 1.0);
-  // gl_FragColor = vec4(vec3(p0hit,0.0,0.0), 1.0);
-  // gl_FragColor = vec4(L, 1.0);
   gl_FragColor = vec4(L+vec3(color.rgb), 1.0);
-
-  // gl_FragColor = vec4(vec3(color.rgb)+hitColor*visibale, 1.0);
 }

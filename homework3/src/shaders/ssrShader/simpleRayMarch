@@ -4,8 +4,8 @@ float RayMarch2(vec3 ori, vec3 dir, out vec3 hitPos) {
 
   float maxDistance = 1000.0;
   float resolution  = 0.3;
-  int   steps       = 5;
-  float thickness   = 2.0;
+  int   steps       = 200;
+  float thickness   = 1.0;
   
   vec2 texSize  = uReslution.xy;//2000*1000
 
