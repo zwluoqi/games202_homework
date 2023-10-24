@@ -8,9 +8,9 @@ lib
 
 homework2/Assignment2/prt
 
-*.pdf
-*.zip
 
+*.zip
+*.DS_Store
 
 # Prerequisites
 *.d
