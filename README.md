@@ -1,8 +1,8 @@
 # games202_homework
 闫老师games202作业
 
-| 截图 | 截图 | 截图 |
-| --- | - | --- |
+| 截图 | 截图 | 截图 | 
+| --- | - | --- | 
 | 1.实时阴影 | 硬阴影，Two Pass Shadow Map方案 | ![](homework1/hw1/image/SM_shadowmap.png) | 
 |  | 软阴影，PCF方案、阴影在边缘处模糊 | ![](homework1/hw1/image/PCF_xpcf.png) | 
 |  | 软阴影，PCSS方案、阴影在遮挡物和阴影之间 距离近的地方阴影偏硬，在距离远的地方则为软阴影 | ![](homework1/hw1/image/PCSS_xPCSS.png) | 
